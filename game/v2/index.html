@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STARFALL — Day 7</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #050510; overflow: hidden; }
+  canvas { display: block; margin: 0 auto; }
+  #hud { position: absolute; top: 12px; left: 0; right: 0; text-align: center;
+         color: #fff; font: 700 22px monospace; letter-spacing: 2px; }
+  #combo { position: absolute; top: 48px; left: 0; right: 0; text-align: center;
+           color: #ffd94d; font: 700 18px monospace; }
+</style>
+</head>
+<body>
+<div id="hud">DAY 7 &nbsp;·&nbsp; SCORE <span id="score">0</span> &nbsp;·&nbsp; SHIELD <span id="shield">▮▮▮</span></div>
+<div id="combo">COMBO ×<span id="comboN">1</span></div>
+<canvas id="game" width="540" height="960"></canvas>
+<script>
+// STARFALL v2 — "day seven": the same game after a week of daily
+// updates. Same map, same ship start, same first falling stars as v1
+// (LANES, ship, rocks below are byte-identical in layout) — plus a
+// week of new stuff layered on top: coins, gems, enemy drones,
+// comets, engine trail particles, floating score popups, a combo
+// meter, a shield bar, a parallax starfield and nebula clouds.
+// That is the whole point of the video: same moment, visibly more
+// going on the second time.
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+const W = 540, H = 960;
+
+// Same start as v1.
+const ship = { x: W / 2, y: H - 140, r: 22 };
+
+// Same lanes and same opening stars/rocks as v1.
+const LANES = [90, 180, 270, 360, 450];
+let t = 0, score = 0, combo = 1, comboTimer = 0;
+const stars = LANES.map((x, i) => ({ x, y: -40 - i * 170, r: 14, got: false }));
+const rocks = [
+  { x: 135, y: -260, r: 24 }, { x: 315, y: -560, r: 24 }, { x: 405, y: -860, r: 24 },
+];
+
+// NEW in the week: coins between the lanes, gems, drones, comets.
+const coins = [135, 225, 315, 405].map((x, i) => ({ x, y: -120 - i * 210, r: 10, got: false }));
+const gems = [{ x: 270, y: -700, r: 12, got: false }];
+const drones = [
+  { x: 90, y: -420, r: 18, dir: 1 }, { x: 450, y: -900, r: 18, dir: -1 },
+];
+const comets = [{ x: 60, y: -100, vx: 3.2, vy: 5.5 }];
+const trail = [];   // engine particles
+const popups = [];  // floating "+10" texts
+
+let keys = {};
+addEventListener('keydown', e => keys[e.key] = true);
+addEventListener('keyup', e => keys[e.key] = false);
+
+function collect(x, y, pts, label) {
+  score += pts * combo;
+  popups.push({ x, y, label: label + ' +' + (pts * combo), life: 1 });
+  combo = Math.min(combo + 1, 8); comboTimer = 3;
+  document.getElementById('score').textContent = score;
+  document.getElementById('comboN').textContent = combo;
+}
+
+function step() {
+  t += 1 / 60;
+  if (keys.ArrowLeft || keys.a) ship.x -= 5;
+  if (keys.ArrowRight || keys.d) ship.x += 5;
+  ship.x = Math.max(30, Math.min(W - 30, ship.x));
+  trail.push({ x: ship.x, y: ship.y + 20, life: 1 });
+  if (trail.length > 40) trail.shift();
+  if (comboTimer > 0) { comboTimer -= 1 / 60; if (comboTimer <= 0) combo = 1; }
+
+  for (const s of stars) {
+    s.y += 2.2;
+    if (s.y > H + 30) { s.y = -30; s.got = false; }
+    if (!s.got && Math.hypot(s.x - ship.x, s.y - ship.y) < s.r + ship.r) {
+      s.got = true; collect(s.x, s.y, 10, 'STAR');
+    }
+  }
+  for (const r of rocks) {
+    r.y += 2.6;
+    if (r.y > H + 40) r.y = -40;
+  }
+  for (const c of coins) {
+    c.y += 3.0;
+    if (c.y > H + 30) { c.y = -30; c.got = false; }
+    if (!c.got && Math.hypot(c.x - ship.x, c.y - ship.y) < c.r + ship.r) {
+      c.got = true; collect(c.x, c.y, 25, 'COIN');
+    }
+  }
+  for (const g of gems) {
+    g.y += 2.0;
+    if (g.y > H + 30) { g.y = -30; g.got = false; }
+    if (!g.got && Math.hypot(g.x - ship.x, g.y - ship.y) < g.r + ship.r) {
+      g.got = true; collect(g.x, g.y, 50, 'GEM');
+    }
+  }
+  for (const d of drones) {
+    d.y += 1.8; d.x += d.dir * 1.6;
+    if (d.x < 50 || d.x > W - 50) d.dir *= -1;
+    if (d.y > H + 40) d.y = -40;
+  }
+  for (const c of comets) {
+    c.x += c.vx; c.y += c.vy;
+    if (c.y > H + 60) { c.x = 40 + Math.random() * 200; c.y = -60; }
+  }
+  for (const p of popups) { p.y -= 1.2; p.life -= 1 / 60; }
+  for (const p of trail) p.life -= 1 / 30;
+}
+
+function draw() {
+  ctx.fillStyle = '#070518';
+  ctx.fillRect(0, 0, W, H);
+  // Nebula clouds (new) + two-layer parallax starfield (new).
+  ctx.fillStyle = 'rgba(196,28,131,0.20)';
+  ctx.beginPath(); ctx.arc(120, (t * 9) % 1100 - 60, 130, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(430, (t * 7 + 400) % 1100 - 60, 110, 0, 7); ctx.fill();
+  ctx.fillStyle = '#cdd8ff';
+  for (let i = 0; i < 70; i++) {
+    const x = (i * 173) % W, y = (i * 311 + t * 26) % H;
+    ctx.fillRect(x, y, 2, 2);
+  }
+  ctx.fillStyle = '#8899bb';
+  for (let i = 0; i < 40; i++) {
+    const x = (i * 97 + 40) % W, y = (i * 211 + t * 12) % H;
+    ctx.fillRect(x, y, 3, 3);
+  }
+  for (const c of comets) {  // comet with a tail (new)
+    ctx.strokeStyle = '#aef3ff'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(c.x, c.y);
+    ctx.lineTo(c.x - c.vx * 12, c.y - c.vy * 12); ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(c.x, c.y, 5, 0, 7); ctx.fill();
+  }
+  for (const s of stars) {
+    if (s.got) continue;
+    ctx.fillStyle = '#ffd94d';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff6c8';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r * 0.45, 0, 7); ctx.fill();
+  }
+  for (const c of coins) {
+    if (c.got) continue;
+    ctx.fillStyle = '#ff9d2e';
+    ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, 7); ctx.fill();
+  }
+  for (const g of gems) {
+    if (g.got) continue;
+    ctx.fillStyle = '#c44dff';
+    ctx.beginPath(); ctx.arc(g.x, g.y, g.r, 0, 7); ctx.fill();
+  }
+  for (const r of rocks) {
+    ctx.fillStyle = '#8a8f9e';
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#5c6170';
+    ctx.beginPath(); ctx.arc(r.x - 7, r.y - 6, 8, 0, 7); ctx.fill();
+  }
+  for (const d of drones) {  // enemy drones (new)
+    ctx.fillStyle = '#ff4d6d';
+    ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(d.x - 6, d.y - 4, 3, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(d.x + 6, d.y - 4, 3, 0, 7); ctx.fill();
+  }
+  // Engine trail (new).
+  for (const p of trail) {
+    ctx.fillStyle = `rgba(77,215,255,${Math.max(p.life, 0) * 0.7})`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, 7); ctx.fill();
+  }
+  // The ship: same triangle, now with a cockpit + shield ring (new).
+  ctx.fillStyle = '#4dd7ff';
+  ctx.beginPath();
+  ctx.moveTo(ship.x, ship.y - 26); ctx.lineTo(ship.x - 20, ship.y + 18);
+  ctx.lineTo(ship.x + 20, ship.y + 18); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e8fbff';
+  ctx.beginPath(); ctx.arc(ship.x, ship.y - 4, 6, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(77,215,255,0.6)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(ship.x, ship.y, 32, 0, 7); ctx.stroke();
+  // Floating score popups (new).
+  ctx.font = '700 17px monospace'; ctx.textAlign = 'center';
+  for (const p of popups) {
+    if (p.life <= 0) continue;
+    ctx.fillStyle = `rgba(255,217,77,${Math.max(p.life, 0)})`;
+    ctx.fillText(p.label, p.x, p.y);
+  }
+}
+
+(function loop() { step(); draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>

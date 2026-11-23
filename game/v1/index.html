@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STARFALL — Day 1</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #050510; overflow: hidden; }
+  canvas { display: block; margin: 0 auto; }
+  #hud { position: absolute; top: 12px; left: 0; right: 0; text-align: center;
+         color: #fff; font: 700 22px monospace; letter-spacing: 2px; }
+</style>
+</head>
+<body>
+<div id="hud">DAY 1 &nbsp;·&nbsp; SCORE <span id="score">0</span></div>
+<canvas id="game" width="540" height="960"></canvas>
+<script>
+// STARFALL v1 — "day one": the first build. One ship, falling stars to
+// collect, rocks to dodge. Same map and same start as v2, on purpose:
+// the video cuts between identical moments a week apart, so the map,
+// the ship's start and the first falling stars never change.
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+const W = 540, H = 960;
+
+// The ship always starts dead centre, same in v1 and v2.
+const ship = { x: W / 2, y: H - 140, r: 22 };
+
+// Fixed spawn lanes, identical in both versions (seeded, no randomness
+// in the opening seconds): the "identical moments" of the video.
+const LANES = [90, 180, 270, 360, 450];
+let t = 0, score = 0;
+const stars = LANES.map((x, i) => ({ x, y: -40 - i * 170, r: 14, got: false }));
+const rocks = [
+  { x: 135, y: -260, r: 24 }, { x: 315, y: -560, r: 24 }, { x: 405, y: -860, r: 24 },
+];
+
+let keys = {};
+addEventListener('keydown', e => keys[e.key] = true);
+addEventListener('keyup', e => keys[e.key] = false);
+
+function step() {
+  t += 1 / 60;
+  if (keys.ArrowLeft || keys.a) ship.x -= 5;
+  if (keys.ArrowRight || keys.d) ship.x += 5;
+  ship.x = Math.max(30, Math.min(W - 30, ship.x));
+  // No autopilot in the real game: the player flies. (The video's
+  // footage uses the same path scripted, so both cuts match.)
+  for (const s of stars) {
+    s.y += 2.2;
+    if (s.y > H + 30) { s.y = -30; s.got = false; }
+    if (!s.got && Math.hypot(s.x - ship.x, s.y - ship.y) < s.r + ship.r) {
+      s.got = true; score += 10;
+      document.getElementById('score').textContent = score;
+    }
+  }
+  for (const r of rocks) {
+    r.y += 2.6;
+    if (r.y > H + 40) r.y = -40;
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#050510';
+  ctx.fillRect(0, 0, W, H);
+  // A few dim background stars — day one has almost nothing in the sky.
+  ctx.fillStyle = '#8899bb';
+  for (let i = 0; i < 24; i++) {
+    const x = (i * 173) % W, y = (i * 311 + t * 12) % H;
+    ctx.fillRect(x, y, 2, 2);
+  }
+  for (const s of stars) {
+    if (s.got) continue;
+    ctx.fillStyle = '#ffd94d';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+  }
+  for (const r of rocks) {
+    ctx.fillStyle = '#8a8f9e';
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, 7); ctx.fill();
+  }
+  // The ship: a plain triangle.
+  ctx.fillStyle = '#4dd7ff';
+  ctx.beginPath();
+  ctx.moveTo(ship.x, ship.y - 26); ctx.lineTo(ship.x - 20, ship.y + 18);
+  ctx.lineTo(ship.x + 20, ship.y + 18); ctx.closePath(); ctx.fill();
+}
+
+(function loop() { step(); draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
